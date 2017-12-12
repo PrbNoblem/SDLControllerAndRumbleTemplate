@@ -87,12 +87,24 @@ LTexture gArrowTexture;
 SDL_GameController* gGameController = NULL;
 SDL_Haptic* gControllerHaptic = NULL;
 
-//check joystickname----------------------------------------------------------------------------------------
+//check joystickname     ########################################################################################
 LTexture gJoystickName;
 TTF_Font *gFont;
 
 void loadJoystickName( std::string sJoystickName );
 //-----------------------------------------------------------------------------
+
+
+// MUSIC STUFF ########################################################################################
+//The music that will be played
+Mix_Music *gMusic = NULL;
+
+//The sound effects that will be used
+Mix_Chunk *gScratch = NULL;
+Mix_Chunk *gHigh = NULL;
+Mix_Chunk *gMedium = NULL;
+Mix_Chunk *gLow = NULL;
+//-----------------------------%%%%%%%%%%%%%%%%%&&&&&&&&&&&&&&&&&&&&&&&&&
 
 LTexture::LTexture()
 {
@@ -253,7 +265,7 @@ bool init()
 	bool success = true;
 
 	//Initialize SDL
-	if( SDL_Init( SDL_INIT_VIDEO | SDL_INIT_JOYSTICK | SDL_INIT_GAMECONTROLLER | SDL_INIT_HAPTIC  ) < 0 )
+	if( SDL_Init( SDL_INIT_VIDEO | SDL_INIT_JOYSTICK | SDL_INIT_GAMECONTROLLER | SDL_INIT_HAPTIC | SDL_INIT_AUDIO ) < 0 )
 	{
 		printf( "SDL could not initialize! SDL Error: %s\n", SDL_GetError() );
 		success = false;
@@ -327,11 +339,59 @@ bool init()
 					printf( "SDL_image could not initialize! SDL_image Error: %s\n", IMG_GetError() );
 					success = false;
 				}
+
+				//Initialize SDL_mixer
+                if( Mix_OpenAudio( 44100, MIX_DEFAULT_FORMAT, 2, 2048 ) < 0 )
+                {
+                    printf( "SDL_mixer could not initialize! SDL_mixer Error: %s\n", Mix_GetError() );
+                    success = false;
+                }
 			}
 		}
 	}
 
 	return success;
+}
+
+bool loadSounds()
+{
+    //Load music
+    gMusic = Mix_LoadMUS( "21_sound_effects_and_music/beat.wav" );
+    if( gMusic == NULL )
+    {
+        printf( "Failed to load beat music! SDL_mixer Error: %s\n", Mix_GetError() );
+        return false;
+    }
+
+    //Load sound effects
+    gScratch = Mix_LoadWAV( "21_sound_effects_and_music/scratch.wav" );
+    if( gScratch == NULL )
+    {
+        printf( "Failed to load scratch sound effect! SDL_mixer Error: %s\n", Mix_GetError() );
+        return false;
+    }
+
+    gHigh = Mix_LoadWAV( "21_sound_effects_and_music/high.wav" );
+    if( gHigh == NULL )
+    {
+        printf( "Failed to load high sound effect! SDL_mixer Error: %s\n", Mix_GetError() );
+        return false;
+    }
+
+    gMedium = Mix_LoadWAV( "21_sound_effects_and_music/medium.wav" );
+    if( gMedium == NULL )
+    {
+        printf( "Failed to load medium sound effect! SDL_mixer Error: %s\n", Mix_GetError() );
+        return false;
+    }
+
+    gLow = Mix_LoadWAV( "21_sound_effects_and_music/low.wav" );
+    if( gLow == NULL )
+    {
+        printf( "Failed to load low sound effect! SDL_mixer Error: %s\n", Mix_GetError() );
+        return false;
+    }
+    return true;
 }
 
 bool loadMedia()
@@ -365,6 +425,19 @@ void close()
 	SDL_DestroyWindow( gWindow );
 	gWindow = NULL;
 	gRenderer = NULL;
+
+
+    Mix_FreeMusic( gMusic );
+    gMusic = NULL;
+
+    Mix_FreeChunk( gScratch );
+    Mix_FreeChunk( gHigh );
+    Mix_FreeChunk( gMedium );
+    Mix_FreeChunk( gLow );
+    gScratch = NULL;
+    gHigh = NULL;
+    gMedium = NULL;
+    gLow = NULL;
 
 	//Quit SDL subsystems
 	IMG_Quit();
@@ -401,6 +474,11 @@ int main( int argc, char* args[] )
 		}
 		else
 		{
+		    if( !loadSounds() )
+            {
+                printf( "Failed to load sounds!\n" );
+                exit(1);
+            }
 			//Main loop flag
 			bool quit = false;
 
@@ -430,6 +508,45 @@ int main( int argc, char* args[] )
                         {
                             printf("can't rumble for some reason %s\n", SDL_GetError());
                         }
+                        printf("button: %d\n", e.button.button );
+                        if( e.jbutton.button == SDL_CONTROLLER_BUTTON_A ) printf( "Button A pressed!\n" );
+                        if( e.jbutton.button == SDL_CONTROLLER_BUTTON_B ) printf( "Button B pressed!\n" );
+                        if( e.jbutton.button == SDL_CONTROLLER_BUTTON_X ) printf( "Button X pressed!\n" );
+                        if( e.jbutton.button == SDL_CONTROLLER_BUTTON_Y ) printf( "Button Y pressed!\n" );
+                        switch(e.jbutton.button)
+                        {
+                        case SDL_CONTROLLER_BUTTON_DPAD_UP:
+                            Mix_PlayChannel( -1, gHigh, 0 );
+                            break;
+                        case SDL_CONTROLLER_BUTTON_DPAD_DOWN:
+                            Mix_PlayChannel( -1, gMedium, 0 );
+                            break;
+                        case SDL_CONTROLLER_BUTTON_DPAD_LEFT:
+                            Mix_PlayChannel( -1, gLow, 0 );
+                            break;
+                        case SDL_CONTROLLER_BUTTON_DPAD_RIGHT:
+                            Mix_PlayChannel( -1, gScratch, 0 );
+                            break;
+
+                        case SDL_CONTROLLER_BUTTON_START:
+                            if(Mix_PlayingMusic() == 0)
+                            {
+                                Mix_PlayMusic(gMusic, -1);
+                            }
+                            else
+                            {
+                                if(Mix_PausedMusic() == 1)
+                                {
+                                    Mix_ResumeMusic();
+                                }
+                                else
+                                {
+                                    Mix_PauseMusic();
+                                }
+                            }
+                            break;
+                        }
+
                     }
 					else if (e.type == SDL_CONTROLLERAXISMOTION)
                     {
@@ -471,6 +588,25 @@ int main( int argc, char* args[] )
 									yDir = 0;
 								}
 							}
+                            else if(e.jaxis.axis == 2)
+                            {
+                                if( e.jaxis.value < -JOYSTICK_DEAD_ZONE ) printf("LEFT STICK LEFT! \n");
+                                if( e.jaxis.value > JOYSTICK_DEAD_ZONE ) printf("LEFT STICK RIGHT! \n");
+                            }
+							else if(e.jaxis.axis == 3)
+                            {
+                                if( e.jaxis.value < -JOYSTICK_DEAD_ZONE ) printf("RIGHT Stick Up!\n");
+                                if( e.jaxis.value > JOYSTICK_DEAD_ZONE ) printf("RIGHT Stick Down!\n");
+                            }
+                            else if(e.jaxis.axis == 4)
+                            {
+                                if( e.jaxis.value > JOYSTICK_DEAD_ZONE ) printf("LEFT TRIGGER !\n");
+                            }
+
+                            else if(e.jaxis.axis == 5)
+                            {
+                                if( e.jaxis.value > JOYSTICK_DEAD_ZONE ) printf("RIGHT TRIGGER  ! \n");
+                            }
 						}
                     }
 
